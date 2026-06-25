@@ -7,15 +7,16 @@
         body {
             margin: 0;
             padding: 0;
-            background-color: #333;
+            background-color: #000;
             color: #fff;
             font-family: Arial, sans-serif;
             text-align: center;
+            overflow: hidden; /* No scrolling - the image owns the whole window */
             overscroll-behavior: none; /* Prevent pull to refresh on mobile */
             touch-action: manipulation; /* Optimize for touch */
         }
         #status {
-            background-color: #222;
+            background-color: rgba(34, 34, 34, 0.85);
             padding: 10px;
             position: fixed;
             top: 0;
@@ -23,34 +24,43 @@
             right: 0;
             font-size: 18px;
             z-index: 100;
+            transition: opacity 0.3s ease;
         }
         #screen {
-            margin-top: 50px;
-            width: 100%;
-            height: calc(100vh - 120px);
+            /* Fill the entire browser window; object-fit keeps the aspect
+               ratio so the cropped region fits edge-to-edge without distortion.
+               Centred via translate so rotation pivots cleanly around the
+               middle (the rotate() is appended in JS). */
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            width: 100vw;
+            height: 100vh;
+            transform: translate(-50%, -50%);
             object-fit: contain;
             background-color: #000;
             pointer-events: none; /* Prevent image drag on touch devices */
             transition: transform 0.3s ease; /* Smooth transition for rotation */
             transform-origin: center center; /* Ensure rotation happens from center */
         }
-        
-        /* Rotation-specific styling */
-        .rotated-90, .rotated-270 {
-            /* For 90/270 degree rotations, we need to adjust dimensions */
-            max-width: calc(100vh - 120px);
-            max-height: 100vw;
-        }
         #controls {
             position: fixed;
             bottom: 0;
             left: 0;
             right: 0;
-            background-color: #222;
+            background-color: rgba(34, 34, 34, 0.85);
             padding: 10px;
             display: flex;
             justify-content: space-around;
             z-index: 100;
+            transition: opacity 0.3s ease;
+        }
+        /* Tap the screen to hide the bars for a fully unobstructed view. */
+        body.immersive #status,
+        body.immersive #controls,
+        body.immersive .fullscreen-button {
+            opacity: 0;
+            pointer-events: none;
         }
         button {
             padding: 12px 24px;
@@ -265,27 +275,18 @@
         // Function to apply rotation to the screen image
         function applyRotation(degrees) {
             console.log(`Applying rotation: ${degrees} degrees`);
-            
-            // Remove any existing rotation classes
-            screenImg.classList.remove('rotated-90', 'rotated-270');
-            
-            // Apply the CSS rotation transform
-            screenImg.style.transform = `rotate(${degrees}deg)`;
-            
-            // Add appropriate class for dimension adjustments
+
+            // Keep the image centred and rotate around its centre. The image
+            // always fills the whole window (object-fit: contain handles the
+            // letterboxing). For 90/270 we swap width/height so the rotated
+            // image still fits the viewport instead of overflowing it.
+            screenImg.style.transform = `translate(-50%, -50%) rotate(${degrees}deg)`;
             if (degrees === 90 || degrees === 270) {
-                screenImg.classList.add(`rotated-${degrees}`);
-                // For portrait orientations (90/270), adjust the sizing
-                screenImg.style.width = 'auto';
-                screenImg.style.height = '100%';
-                screenImg.style.maxWidth = 'calc(100vh - 120px)';
-                screenImg.style.maxHeight = 'calc(100vw - 40px)';
+                screenImg.style.width = '100vh';
+                screenImg.style.height = '100vw';
             } else {
-                // For normal orientations (0/180), use full width
-                screenImg.style.width = '100%';
-                screenImg.style.height = 'auto';
-                screenImg.style.maxWidth = '100%';
-                screenImg.style.maxHeight = 'calc(100vh - 120px)';
+                screenImg.style.width = '100vw';
+                screenImg.style.height = '100vh';
             }
         }
         
@@ -295,6 +296,17 @@
             applyRotation(currentRotation);
         });
         
+        // Tap anywhere (other than the buttons) to hide/show the bars so the
+        // mirrored image can use the entire window.
+        document.addEventListener('click', (e) => {
+            if (e.target.closest('#controls') ||
+                e.target.closest('#status') ||
+                e.target.id === 'fullscreenBtn') {
+                return;
+            }
+            document.body.classList.toggle('immersive');
+        });
+
         // Connect button
         connectBtn.addEventListener('click', () => {
             if (socket && socket.readyState === WebSocket.OPEN) {
