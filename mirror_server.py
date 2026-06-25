@@ -16,7 +16,12 @@ import subprocess
 import urllib.request
 import urllib.error
 import traceback
+import platform
 from tkinter import ttk
+
+# Detect the current operating system once so we can branch on it where needed.
+IS_WINDOWS = platform.system() == "Windows"
+IS_MAC = platform.system() == "Darwin"
 
 class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, directory=None, ws_port=None, **kwargs):
@@ -228,11 +233,18 @@ class MirrorApp:
         except Exception as e:
             print(f"✗ WebSocket port {self.ws_port} test failed: {e}")
         
-        # Check for common network interfaces
+        # Check for common network interfaces (command differs per OS)
         try:
             import subprocess
-            result = subprocess.run(['ipconfig'], capture_output=True, text=True, timeout=5)
-            if 'Wireless LAN adapter Wi-Fi' in result.stdout:
+            if IS_WINDOWS:
+                cmd = ['ipconfig']
+                wifi_marker = 'Wireless LAN adapter Wi-Fi'
+            else:
+                # macOS / Linux: ifconfig lists interfaces; Wi-Fi is usually en0 on Mac
+                cmd = ['ifconfig']
+                wifi_marker = 'en0'
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=5)
+            if wifi_marker in result.stdout:
                 print("✓ WiFi adapter detected")
             else:
                 print("⚠ WiFi adapter not clearly detected")
@@ -251,13 +263,20 @@ class MirrorApp:
         print(f"Full URL: {info}")
         print("\nNETWORK DIAGNOSTICS:")
         self.run_network_diagnostics()
-        print("\nTROUBLESHOoting TIPS:")
+        print("\nTROUBLESHOOTING TIPS:")
         print("1. Make sure both devices are on the same WiFi network")
-        print("2. Check Windows Firewall settings")
-        print("3. Try accessing from PC browser first")
-        print("4. Verify mirrorindex.html exists in the same folder")
-        print("5. Try disabling Windows Firewall temporarily")
-        print(f"6. Test connectivity: ping {self.local_ip} from your phone")
+        if IS_MAC:
+            print("2. Grant Screen Recording permission: System Settings > Privacy & "
+                  "Security > Screen Recording -> enable your Terminal/IDE, then "
+                  "fully quit and reopen it")
+            print("3. macOS firewall: System Settings > Network > Firewall "
+                  "(allow incoming connections for python if prompted)")
+        else:
+            print("2. Check Windows Firewall settings")
+            print("3. Try disabling Windows Firewall temporarily")
+        print("4. Try accessing from this computer's browser first")
+        print("5. Verify mirrorindex.html exists in the same folder")
+        print(f"6. Test connectivity: ping {self.local_ip} from your Kindle/phone")
         print("=" * 50)
     
     def is_port_in_use(self, port):
@@ -387,7 +406,13 @@ class MirrorApp:
             try:
                 # Capture the current screen
                 screenshot = ImageGrab.grab()
-                
+
+                # On macOS ImageGrab.grab() returns an RGBA image, and JPEG
+                # cannot store an alpha channel ("cannot write mode RGBA as
+                # JPEG"). Drop alpha so the JPEG encode below works on every OS.
+                if screenshot.mode != "RGB":
+                    screenshot = screenshot.convert("RGB")
+
                 # Apply resolution scaling if needed (but no rotation here)
                 scale_factor = self.scale_var.get()
                 if scale_factor < 1.0:
@@ -406,6 +431,14 @@ class MirrorApp:
                 time.sleep(1 / self.fps_var.get())
             except Exception as e:
                 print("Error capturing screen:", e)
+                if IS_MAC:
+                    # screencapture fails until Screen Recording permission is granted.
+                    msg = ("Screen capture blocked - grant Screen Recording "
+                           "permission, then restart this app")
+                    print("  -> macOS: System Settings > Privacy & Security > "
+                          "Screen Recording -> enable your Terminal/IDE, then "
+                          "fully quit & reopen it.")
+                    self.update_status(msg)
                 time.sleep(1)  # Wait a bit before retrying on error
     
     def test_connection(self):
