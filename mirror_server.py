@@ -59,7 +59,7 @@ class MirrorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Screen Mirror Server")
-        self.root.geometry("400x350")  # Made slightly taller for rotation controls
+        self.root.geometry("400x470")  # Taller for rotation + crop-region controls
         
         # Create a frame for controls
         control_frame = tk.Frame(root, padx=10, pady=10)
@@ -131,6 +131,40 @@ class MirrorApp:
         fps_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         tk.Label(fps_frame, textvariable=self.fps_var).pack(side=tk.LEFT, padx=5)
         
+        # Capture-region controls: let a wide screen be cropped to the
+        # Kindle's shape so it fills the display instead of being letterboxed.
+        crop_frame = tk.Frame(control_frame)
+        crop_frame.pack(fill=tk.X, pady=5)
+
+        self.crop_enabled = tk.BooleanVar(value=False)
+        self.crop_region = None  # (fx0, fy0, fx1, fy1) fractions of the screen
+        tk.Checkbutton(crop_frame, text="Crop to region",
+                       variable=self.crop_enabled).pack(side=tk.LEFT)
+
+        tk.Label(crop_frame, text="Shape:").pack(side=tk.LEFT, padx=(8, 2))
+        # Aspect ratios are width:height. Portrait options are for a Kindle
+        # held upright; landscape for one turned on its side.
+        self.aspect_choices = {
+            "Free": None,
+            "Kindle portrait 3:4": 3 / 4,
+            "Kindle landscape 4:3": 4 / 3,
+            "16:9": 16 / 9,
+            "9:16": 9 / 16,
+        }
+        self.aspect_var = tk.StringVar(value="Kindle portrait 3:4")
+        ttk.OptionMenu(crop_frame, self.aspect_var, self.aspect_var.get(),
+                       *self.aspect_choices.keys()).pack(side=tk.LEFT)
+
+        region_btn_frame = tk.Frame(control_frame)
+        region_btn_frame.pack(fill=tk.X, pady=(0, 5))
+        tk.Button(region_btn_frame, text="Select Region…",
+                  command=self.select_region, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
+        tk.Button(region_btn_frame, text="Reset to Full Screen",
+                  command=self.reset_region).pack(side=tk.LEFT, padx=5)
+        self.region_label = tk.Label(region_btn_frame, text="Region: full screen",
+                                     font=("Arial", 9))
+        self.region_label.pack(side=tk.LEFT, padx=5)
+
         # Add a test connection button
         test_frame = tk.Frame(control_frame)
         test_frame.pack(fill=tk.X, pady=5)
@@ -195,6 +229,76 @@ class MirrorApp:
     
     def update_scale_label(self, *args):
         self.scale_label.config(text=f"{self.scale_var.get():.1f}")
+
+    def reset_region(self):
+        """Clear the crop region so the whole screen is mirrored again."""
+        self.crop_region = None
+        self.crop_enabled.set(False)
+        self.region_label.config(text="Region: full screen")
+
+    def select_region(self):
+        """Drag a rectangle over the screen to choose the capture region.
+
+        Opens a dimmed full-screen overlay; the user drags to draw a box. If a
+        fixed aspect ratio is chosen, the box is constrained to it so the result
+        fills the Kindle without letterbox bars. Coordinates are stored as
+        fractions of the screen so they survive Retina/resolution differences.
+        """
+        ratio = self.aspect_choices.get(self.aspect_var.get())  # width/height or None
+
+        overlay = tk.Toplevel(self.root)
+        overlay.attributes("-fullscreen", True)
+        overlay.attributes("-alpha", 0.3)
+        overlay.attributes("-topmost", True)
+        overlay.configure(bg="black")
+        canvas = tk.Canvas(overlay, cursor="cross", bg="gray15", highlightthickness=0)
+        canvas.pack(fill=tk.BOTH, expand=True)
+
+        sw = overlay.winfo_screenwidth()
+        sh = overlay.winfo_screenheight()
+        canvas.create_text(sw // 2, 40, fill="white", font=("Arial", 16),
+                           text="Drag to select the area to mirror  •  Esc to cancel")
+
+        state = {"x0": 0, "y0": 0, "rect": None}
+
+        def on_press(event):
+            state["x0"], state["y0"] = event.x, event.y
+            if state["rect"]:
+                canvas.delete(state["rect"])
+            state["rect"] = canvas.create_rectangle(event.x, event.y, event.x, event.y,
+                                                    outline="#00E5FF", width=3)
+
+        def on_drag(event):
+            x, y = event.x, event.y
+            if ratio:
+                # Constrain to the chosen aspect ratio (width/height).
+                dx, dy = x - state["x0"], y - state["y0"]
+                sx = 1 if dx >= 0 else -1
+                sy = 1 if dy >= 0 else -1
+                if abs(dx) / ratio >= abs(dy):
+                    dy = sy * abs(dx) / ratio
+                else:
+                    dx = sx * abs(dy) * ratio
+                x, y = state["x0"] + dx, state["y0"] + dy
+            canvas.coords(state["rect"], state["x0"], state["y0"], x, y)
+
+        def on_release(event):
+            x0, y0, x1, y1 = canvas.coords(state["rect"])
+            overlay.destroy()
+            left, right = sorted((x0, x1))
+            top, bottom = sorted((y0, y1))
+            if right - left < 5 or bottom - top < 5:
+                return  # too small, treat as a misclick
+            self.crop_region = (left / sw, top / sh, right / sw, bottom / sh)
+            self.crop_enabled.set(True)
+            self.region_label.config(
+                text=f"Region: {int(right - left)}x{int(bottom - top)} px")
+
+        canvas.bind("<ButtonPress-1>", on_press)
+        canvas.bind("<B1-Motion>", on_drag)
+        canvas.bind("<ButtonRelease-1>", on_release)
+        overlay.bind("<Escape>", lambda e: overlay.destroy())
+        overlay.focus_force()
     
     def get_local_ip(self):
         """Get the actual local IP address that can be reached from other devices."""
@@ -412,6 +516,18 @@ class MirrorApp:
                 # JPEG"). Drop alpha so the JPEG encode below works on every OS.
                 if screenshot.mode != "RGB":
                     screenshot = screenshot.convert("RGB")
+
+                # Crop to the selected region so a wide monitor fills the
+                # Kindle instead of being letterboxed down to a tiny strip.
+                # The region is stored as fractions (0..1) of the screen, which
+                # keeps it correct regardless of Retina scaling or resolution.
+                if self.crop_enabled.get() and self.crop_region is not None:
+                    W, H = screenshot.size
+                    fx0, fy0, fx1, fy1 = self.crop_region
+                    box = (int(fx0 * W), int(fy0 * H), int(fx1 * W), int(fy1 * H))
+                    # Guard against a zero-area box (would raise on save).
+                    if box[2] - box[0] >= 2 and box[3] - box[1] >= 2:
+                        screenshot = screenshot.crop(box)
 
                 # Apply resolution scaling if needed (but no rotation here)
                 scale_factor = self.scale_var.get()
