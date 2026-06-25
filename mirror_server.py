@@ -246,16 +246,25 @@ class MirrorApp:
         """
         ratio = self.aspect_choices.get(self.aspect_var.get())  # width/height or None
 
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+
         overlay = tk.Toplevel(self.root)
-        overlay.attributes("-fullscreen", True)
+        # Use a borderless window sized to the screen rather than the native
+        # "-fullscreen" attribute. On macOS -fullscreen opens a *separate Space*
+        # and the desktop flips away to it; overrideredirect keeps the overlay
+        # on the CURRENT desktop, where the user is actually selecting.
+        overlay.overrideredirect(True)
+        overlay.geometry(f"{sw}x{sh}+0+0")
         overlay.attributes("-alpha", 0.3)
         overlay.attributes("-topmost", True)
         overlay.configure(bg="black")
         canvas = tk.Canvas(overlay, cursor="cross", bg="gray15", highlightthickness=0)
         canvas.pack(fill=tk.BOTH, expand=True)
-
-        sw = overlay.winfo_screenwidth()
-        sh = overlay.winfo_screenheight()
+        overlay.update_idletasks()
+        overlay.lift()
+        overlay.focus_force()
+        canvas.focus_set()
         canvas.create_text(sw // 2, 40, fill="white", font=("Arial", 16),
                            text="Drag to select the area to mirror  •  Esc to cancel")
 
@@ -297,8 +306,10 @@ class MirrorApp:
         canvas.bind("<ButtonPress-1>", on_press)
         canvas.bind("<B1-Motion>", on_drag)
         canvas.bind("<ButtonRelease-1>", on_release)
-        overlay.bind("<Escape>", lambda e: overlay.destroy())
-        overlay.focus_force()
+        # Bind Escape on both the overlay and the canvas (which holds focus) so
+        # cancelling works regardless of where key events are routed.
+        for widget in (overlay, canvas):
+            widget.bind("<Escape>", lambda e: overlay.destroy())
     
     def get_local_ip(self):
         """Get the actual local IP address that can be reached from other devices."""
