@@ -26,16 +26,18 @@ shown in the app window (both devices must be on the same Wi-Fi network).
 
 ## Sharper image on a high-DPI (300 ppi) Kindle
 
-The Kindle's screen is grayscale, so a colour image gets dithered, which blurs
-text. For the clearest result:
+For the clearest result on a high-DPI Kindle:
 
-- Tick **Grayscale (sharper on e-ink Kindle)** — it removes colour dithering and
-  also cuts bandwidth.
 - Keep **Image Quality** high (the default is now 80) and **Resolution Scale** at
   1.0 so detail isn't thrown away before it reaches the Kindle.
 - Crop to a region (below) rather than mirroring the whole wide screen — a
   smaller, focused area maps to more Kindle pixels, so text stays crisp.
 - A lower **FPS** (e.g. 2–5) reduces e-ink ghosting for mostly-static content.
+
+**Grayscale option:** the **Grayscale (sharper on e-ink Kindle)** checkbox only
+helps on *monochrome* e-ink readers, where it avoids colour-to-gray dithering. On
+a **colour** Kindle (e.g. Colorsoft) leave it **off** — your screen can show the
+colour, so converting to gray just discards it without improving sharpness.
 
 ## Fitting a wide monitor to the Kindle (crop to a region)
 
@@ -95,6 +97,8 @@ python mirror_server.py
 - The viewer no longer auto-opens on macOS; use **Open Viewer in Browser**.
 - Added a **Grayscale** option and a higher default quality for sharper output
   on e-ink Kindles.
+- Closing the GUI window now fully quits the app, and the double-click launcher
+  closes its Terminal window afterward, so nothing is left running.
 - Added a **crop-to-region** feature so a wide monitor can fill the Kindle
   instead of being letterboxed.
 - Added **`Start Kindle Mirror.command`** for double-click launching from Finder.

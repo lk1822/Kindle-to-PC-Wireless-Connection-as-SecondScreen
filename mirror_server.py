@@ -11,6 +11,7 @@ import socket
 import http.server
 import socketserver
 import os
+import sys
 import webbrowser
 import subprocess
 import urllib.request
@@ -638,4 +639,22 @@ class MirrorApp:
 if __name__ == "__main__":
     root = tk.Tk()
     app = MirrorApp(root)
+
+    def _on_close():
+        # Closing the window should stop everything. Stop the capture loop and
+        # tear down the GUI; the daemon server/capture threads end with the
+        # process.
+        app.capturing = False
+        try:
+            root.destroy()
+        except Exception:
+            pass
+
+    root.protocol("WM_DELETE_WINDOW", _on_close)
     root.mainloop()
+
+    # Force a clean, immediate process exit once the window is gone so the
+    # launching terminal returns right away (daemon threads / the asyncio loop
+    # could otherwise keep the interpreter alive on macOS).
+    sys.stdout.flush()
+    os._exit(0)
