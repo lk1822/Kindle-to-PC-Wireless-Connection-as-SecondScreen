@@ -59,7 +59,7 @@ class MirrorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Screen Mirror Server")
-        self.root.geometry("400x470")  # Taller for rotation + crop-region controls
+        self.root.geometry("440x560")  # Room for rotation, crop, grayscale + buttons
         
         # Create a frame for controls
         control_frame = tk.Frame(root, padx=10, pady=10)
@@ -97,7 +97,8 @@ class MirrorApp:
         quality_frame.pack(fill=tk.X, pady=5)
         
         tk.Label(quality_frame, text="Image Quality:").pack(side=tk.LEFT)
-        self.quality_var = tk.IntVar(value=50)
+        # Higher default: sharper text on a high-DPI (300 ppi) Kindle.
+        self.quality_var = tk.IntVar(value=80)
         quality_slider = ttk.Scale(quality_frame, from_=10, to=95, 
                                    variable=self.quality_var, orient=tk.HORIZONTAL)
         quality_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
@@ -131,6 +132,15 @@ class MirrorApp:
         fps_slider.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         tk.Label(fps_frame, textvariable=self.fps_var).pack(side=tk.LEFT, padx=5)
         
+        # E-ink clarity: a Kindle's screen is grayscale, so sending colour makes
+        # it dither (which blurs text). Sending grayscale looks sharper on a
+        # 300 ppi e-ink display and uses less bandwidth.
+        eink_frame = tk.Frame(control_frame)
+        eink_frame.pack(fill=tk.X, pady=5)
+        self.grayscale_var = tk.BooleanVar(value=False)
+        tk.Checkbutton(eink_frame, text="Grayscale (sharper on e-ink Kindle)",
+                       variable=self.grayscale_var).pack(side=tk.LEFT)
+
         # Capture-region controls: let a wide screen be cropped to the
         # Kindle's shape so it fills the display instead of being letterboxed.
         crop_frame = tk.Frame(control_frame)
@@ -157,24 +167,31 @@ class MirrorApp:
 
         region_btn_frame = tk.Frame(control_frame)
         region_btn_frame.pack(fill=tk.X, pady=(0, 5))
-        tk.Button(region_btn_frame, text="Select Region…",
-                  command=self.select_region, bg="#4CAF50", fg="white").pack(side=tk.LEFT, padx=5)
+        self._accent_button(region_btn_frame, "Select Region…",
+                            self.select_region, "#4CAF50").pack(side=tk.LEFT, padx=5)
         tk.Button(region_btn_frame, text="Reset to Full Screen",
                   command=self.reset_region).pack(side=tk.LEFT, padx=5)
         self.region_label = tk.Label(region_btn_frame, text="Region: full screen",
                                      font=("Arial", 9))
         self.region_label.pack(side=tk.LEFT, padx=5)
 
+        # "Open viewer" gets its own row so it's prominent and uncrowded.
+        open_frame = tk.Frame(control_frame)
+        open_frame.pack(fill=tk.X, pady=5)
+        self.open_btn = self._accent_button(open_frame, "Open Viewer in Browser",
+                                            self.open_viewer, "#9C27B0")
+        self.open_btn.pack(fill=tk.X, padx=5)
+
         # Add a test connection button
         test_frame = tk.Frame(control_frame)
         test_frame.pack(fill=tk.X, pady=5)
-        
-        self.test_btn = tk.Button(test_frame, text="Test Connection", 
-                                 command=self.test_connection, bg="#2196F3", fg="white")
+
+        self.test_btn = self._accent_button(test_frame, "Test Connection",
+                                            self.test_connection, "#2196F3")
         self.test_btn.pack(side=tk.LEFT, padx=5)
-        
-        self.restart_btn = tk.Button(test_frame, text="Restart Servers", 
-                                    command=self.restart_servers, bg="#FF9800", fg="white")
+
+        self.restart_btn = self._accent_button(test_frame, "Restart Servers",
+                                               self.restart_servers, "#FF9800")
         self.restart_btn.pack(side=tk.LEFT, padx=5)
         
         # Status label to show server state
@@ -219,16 +236,30 @@ class MirrorApp:
         self.capture_thread.daemon = True
         self.capture_thread.start()
         
-        # Open browser automatically
-        self.open_browser_thread = threading.Thread(target=self.open_browser)
-        self.open_browser_thread.daemon = True
-        self.open_browser_thread.start()
+        # Open the viewer automatically on Windows only. On macOS the Mac
+        # browser isn't the target (the Kindle is), so don't steal focus with a
+        # new window every launch — use the "Open Viewer in Browser" button.
+        if not IS_MAC:
+            self.open_browser_thread = threading.Thread(target=self.open_browser)
+            self.open_browser_thread.daemon = True
+            self.open_browser_thread.start()
         
         # Update connection info
         self.update_connection_info()
     
     def update_scale_label(self, *args):
         self.scale_label.config(text=f"{self.scale_var.get():.1f}")
+
+    def _accent_button(self, parent, text, command, color):
+        """Create a colored action button that stays readable on every OS.
+
+        On macOS tk.Button ignores the bg colour but still applies fg, so the
+        original "white text on a coloured button" rendered as white-on-white
+        (invisible). Use a plain native button there; keep colours on Windows.
+        """
+        if IS_MAC:
+            return tk.Button(parent, text=text, command=command)
+        return tk.Button(parent, text=text, command=command, bg=color, fg="white")
 
     def reset_region(self):
         """Clear the crop region so the whole screen is mirrored again."""
@@ -421,6 +452,10 @@ class MirrorApp:
     def open_browser(self):
         # Wait a moment for servers to start
         time.sleep(1.5)
+        self.open_viewer()
+
+    def open_viewer(self):
+        """Open the mirror viewer page in the local browser (button action)."""
         url = f"http://{self.local_ip}:{self.http_port}/mirrorindex.html"
         try:
             webbrowser.open(url)
@@ -546,7 +581,12 @@ class MirrorApp:
                     new_width = int(screenshot.width * scale_factor)
                     new_height = int(screenshot.height * scale_factor)
                     screenshot = screenshot.resize((new_width, new_height), Image.Resampling.LANCZOS)
-                
+
+                # Convert to grayscale for e-ink Kindles (sharper, no colour
+                # dithering). Done last so crop/scale still work in colour.
+                if self.grayscale_var.get():
+                    screenshot = screenshot.convert("L")
+
                 buffer = io.BytesIO()
                 # Save the screenshot as JPEG with quality setting from slider
                 screenshot.save(buffer, format="JPEG", quality=self.quality_var.get())

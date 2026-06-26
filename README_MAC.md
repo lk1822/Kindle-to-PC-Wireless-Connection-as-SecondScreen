@@ -19,9 +19,23 @@ Equivalent from a terminal:
 ```
 
 On first run this creates a `.venv`, installs Pillow + websockets, and launches
-the GUI. A browser window opens automatically. On your Kindle's Experimental
-Browser, open the `http://<your-mac-ip>:8000/mirrorindex.html` URL shown in the
-app window (both devices must be on the same Wi-Fi network).
+the GUI. On macOS the browser does **not** open automatically — click
+**Open Viewer in Browser** in the app to preview on your Mac. On your Kindle's
+Experimental Browser, open the `http://<your-mac-ip>:8000/mirrorindex.html` URL
+shown in the app window (both devices must be on the same Wi-Fi network).
+
+## Sharper image on a high-DPI (300 ppi) Kindle
+
+The Kindle's screen is grayscale, so a colour image gets dithered, which blurs
+text. For the clearest result:
+
+- Tick **Grayscale (sharper on e-ink Kindle)** — it removes colour dithering and
+  also cuts bandwidth.
+- Keep **Image Quality** high (the default is now 80) and **Resolution Scale** at
+  1.0 so detail isn't thrown away before it reaches the Kindle.
+- Crop to a region (below) rather than mirroring the whole wide screen — a
+  smaller, focused area maps to more Kindle pixels, so text stays crisp.
+- A lower **FPS** (e.g. 2–5) reduces e-ink ghosting for mostly-static content.
 
 ## Fitting a wide monitor to the Kindle (crop to a region)
 
@@ -75,6 +89,12 @@ python mirror_server.py
 - Fixed a black-screen bug: macOS `ImageGrab.grab()` returns an RGBA image and
   JPEG can't store alpha, so every frame failed to encode. The capture loop now
   converts to RGB first (a no-op on Windows).
+- Fixed white-on-white buttons: macOS `tk.Button` ignores the background colour
+  but still applied white text, so the coloured buttons were invisible. They now
+  use native button styling on macOS (colours kept on Windows).
+- The viewer no longer auto-opens on macOS; use **Open Viewer in Browser**.
+- Added a **Grayscale** option and a higher default quality for sharper output
+  on e-ink Kindles.
 - Added a **crop-to-region** feature so a wide monitor can fill the Kindle
   instead of being letterboxed.
 - Added **`Start Kindle Mirror.command`** for double-click launching from Finder.
