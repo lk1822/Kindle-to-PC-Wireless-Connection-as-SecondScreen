@@ -45,13 +45,16 @@ A wide/ultrawide monitor is a very different shape from the Kindle, so mirroring
 the whole screen makes everything tiny with big empty bars. Instead you can send
 just a Kindle-shaped slice of your screen:
 
-1. In the app, tick **Crop to region**.
-2. Pick a **Shape** that matches how you hold the Kindle — e.g.
-   *Kindle portrait 3:4* (upright) or *Kindle landscape 4:3* (on its side).
-   Choose *Free* to draw any rectangle.
-3. Click **Select Region…**, then drag a box over the part of your screen you
-   want on the Kindle. The box snaps to the chosen shape. (Esc cancels.)
-4. **Reset to Full Screen** clears the crop.
+- **Fit to Kindle** (one click): instantly crops the largest Kindle-shaped
+  (3:4 portrait) region your screen can supply, centred, and sets full
+  resolution + high quality — the sharpest starting point. Use this first.
+- Or set it up manually:
+  1. Tick **Crop to region**.
+  2. Pick a **Shape** matching how you hold the Kindle — *Kindle portrait 3:4*
+     (upright), *Kindle landscape 4:3* (on its side), or *Free*.
+  3. Click **Select Region…** and drag a box over the area you want; it snaps to
+     the chosen shape. (Esc cancels.)
+  4. **Reset** clears the crop (back to full screen).
 
 The selected area then fills the Kindle at full size and sharpness. You can still
 use the **🔄 Rotate** button on the Kindle page to match its orientation.

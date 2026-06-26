@@ -60,7 +60,7 @@ class MirrorApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Screen Mirror Server")
-        self.root.geometry("440x560")  # Room for rotation, crop, grayscale + buttons
+        self.root.geometry("440x590")  # Room for rotation, crop, grayscale + buttons
         
         # Create a frame for controls
         control_frame = tk.Frame(root, padx=10, pady=10)
@@ -167,14 +167,16 @@ class MirrorApp:
                        *self.aspect_choices.keys()).pack(side=tk.LEFT)
 
         region_btn_frame = tk.Frame(control_frame)
-        region_btn_frame.pack(fill=tk.X, pady=(0, 5))
+        region_btn_frame.pack(fill=tk.X, pady=(0, 2))
+        self._accent_button(region_btn_frame, "Fit to Kindle",
+                            self.auto_fit_kindle, "#009688").pack(side=tk.LEFT, padx=5)
         self._accent_button(region_btn_frame, "Select Region…",
                             self.select_region, "#4CAF50").pack(side=tk.LEFT, padx=5)
-        tk.Button(region_btn_frame, text="Reset to Full Screen",
+        tk.Button(region_btn_frame, text="Reset",
                   command=self.reset_region).pack(side=tk.LEFT, padx=5)
-        self.region_label = tk.Label(region_btn_frame, text="Region: full screen",
+        self.region_label = tk.Label(control_frame, text="Region: full screen",
                                      font=("Arial", 9))
-        self.region_label.pack(side=tk.LEFT, padx=5)
+        self.region_label.pack(fill=tk.X, padx=5)
 
         # "Open viewer" gets its own row so it's prominent and uncrowded.
         open_frame = tk.Frame(control_frame)
@@ -267,6 +269,40 @@ class MirrorApp:
         self.crop_region = None
         self.crop_enabled.set(False)
         self.region_label.config(text="Region: full screen")
+
+    def auto_fit_kindle(self):
+        """One-click preset: crop the largest Kindle-shaped region the screen
+        can supply, centred, for the sharpest result.
+
+        Kindles (incl. the Scribe) are ~3:4 portrait, so we use the selected
+        Shape (defaulting to portrait 3:4 if "Free") and size the box as large
+        as fits the screen — more source pixels means crisper text. Also forces
+        full resolution and a high quality.
+        """
+        ratio = self.aspect_choices.get(self.aspect_var.get())
+        if ratio is None:  # "Free" selected -> default to Kindle portrait
+            ratio = 3 / 4
+            self.aspect_var.set("Kindle portrait 3:4")
+
+        sw = self.root.winfo_screenwidth()
+        sh = self.root.winfo_screenheight()
+        # Largest box with width/height == ratio that fits the screen.
+        box_h = sh
+        box_w = ratio * box_h
+        if box_w > sw:
+            box_w = sw
+            box_h = box_w / ratio
+
+        fx0 = (sw - box_w) / 2 / sw
+        fy0 = (sh - box_h) / 2 / sh
+        fx1 = (sw + box_w) / 2 / sw
+        fy1 = (sh + box_h) / 2 / sh
+        self.crop_region = (fx0, fy0, fx1, fy1)
+        self.crop_enabled.set(True)
+        self.scale_var.set(1.0)          # never downscale
+        self.quality_var.set(max(self.quality_var.get(), 85))
+        self.region_label.config(
+            text=f"Region: {int(box_w)}x{int(box_h)} px (Kindle fit)")
 
     def select_region(self):
         """Drag a rectangle over the screen to choose the capture region.
